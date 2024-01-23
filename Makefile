@@ -26,7 +26,7 @@ mosquitto-stop:
 	@pkill mosquitto
 
 test:
-	@pytest -v --cov --cov-report=xml
+	@pytest -v --cov --cov-report=xml --log-cli-level=DEBUG
 
 test-coverage: test
 	@coverage report --skip-empty --no-skip-covered --sort=Cover
@@ -34,6 +34,9 @@ test-coverage: test
 test-mqtt: gen-tls-certs
 	-@pytest -v tests/deye_mqtt_inttest.py
 	@rm certs/* && rmdir certs
+
+test-at-connector:
+	@bash -c "set -a; source config.env; pytest -v --log-cli-level=DEBUG tests/deye_at_connector_inttest.py"
 
 run:
 	@bash -c "set -a; source config.env; python src/deye_docker_entrypoint.py"
@@ -96,9 +99,11 @@ METRIC_GROUPS = \
 	deye_sg04lp3 \
 	deye_sg04lp3_battery \
 	deye_sg04lp3_ups \
+	deye_sg04lp3_timeofuse \
 	igen_dtsd422 \
 	deye_hybrid \
 	deye_hybrid_battery \
+	deye_hybrid_timeofuse \
 	settings \
 	deye_sg01hp3 \
 	deye_sg01hp3_battery \

@@ -18,14 +18,14 @@
 import sys
 
 from deye_config import DeyeConfig
-from deye_connector import DeyeConnector
+from deye_connector_factory import DeyeConnectorFactory
 from deye_modbus import DeyeModbus
 
 
 class DeyeCli:
     def __init__(self, config: DeyeConfig):
-        connector = DeyeConnector(config)
-        self.__modbus = DeyeModbus(config, connector)
+        connector = DeyeConnectorFactory(config).create_connector()
+        self.__modbus = DeyeModbus(connector)
 
     def exec_command(self, args):
         command = args[0]
@@ -55,7 +55,7 @@ class DeyeCli:
             sys.exit(1)
         reg_address = int(args[0])
         reg_value = int(args[1])
-        if self.__modbus.write_register(reg_address, reg_value):
+        if self.__modbus.write_register_uint(reg_address, reg_value):
             print("Ok")
         else:
             print("Error")

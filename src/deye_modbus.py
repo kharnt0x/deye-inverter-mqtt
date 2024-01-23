@@ -19,7 +19,6 @@ import logging
 
 import libscrc
 
-from deye_config import DeyeConfig
 from deye_connector import DeyeConnector
 
 
@@ -28,9 +27,8 @@ class DeyeModbus:
     Inspired by https://github.com/jlopez77/DeyeInverter
     """
 
-    def __init__(self, config: DeyeConfig, connector: DeyeConnector):
+    def __init__(self, connector: DeyeConnector):
         self.__log = logging.getLogger(DeyeModbus.__name__)
-        self.config = config.logger
         self.connector = connector
 
     def read_registers(self, first_reg: int, last_reg: int) -> dict[int, bytearray]:
@@ -45,15 +43,16 @@ class DeyeModbus:
             and register value is the map value
         """
         modbus_frame = self.__build_modbus_read_holding_registers_request_frame(first_reg, last_reg)
-        req_frame = self.__build_request_frame(modbus_frame)
-        resp_frame = self.connector.send_request(req_frame)
-        modbus_resp_frame = self.__extract_modbus_response_frame(resp_frame)
+        modbus_crc = bytearray.fromhex("{:04x}".format(libscrc.modbus(modbus_frame)))
+        modbus_crc.reverse()
+
+        modbus_resp_frame = self.connector.send_request(modbus_frame + modbus_crc)
         if modbus_resp_frame is None:
             return {}
         return self.__parse_modbus_read_holding_registers_response(modbus_resp_frame, first_reg, last_reg)
 
-    def write_register(self, reg_address: int, reg_value: int) -> bool:
-        """Write single modbus holding register
+    def write_register_uint(self, reg_address: int, reg_value: int) -> bool:
+        """Write single modbus holding register, assuming the value is an unsigned int
 
         Args:
             reg_address (int): The address of the register to write
@@ -62,10 +61,22 @@ class DeyeModbus:
         Returns:
             bool: True when the write operation was successful, False otherwise
         """
+        return self.write_register(reg_address, reg_value.to_bytes(2, "big", signed=False))
+
+    def write_register(self, reg_address: int, reg_value: bytearray) -> bool:
+        """Write single modbus holding register
+
+        Args:
+            reg_address (int): The address of the register to write
+            reg_value (bytearray): The value of the register to write
+
+        Returns:
+            bool: True when the write operation was successful, False otherwise
+        """
         return self.write_registers(reg_address, [reg_value])
 
-    def write_registers(self, reg_address: int, reg_values: list[int]) -> bool:
-        """Write multiple modbus holding registers.
+    def write_registers_uint(self, reg_address: int, reg_values: list[int]) -> bool:
+        """Write multiple modbus holding registers, assuming the values are unsigned integers.
 
 
         Args:
@@ -75,66 +86,28 @@ class DeyeModbus:
         Returns:
             bool: True when the write operation was successful, False otherwise
         """
+        self.write_registers(reg_address, [v.to_bytes(2, "big", signed=False) for v in reg_values])
+
+    def write_registers(self, reg_address: int, reg_values: list[bytearray]) -> bool:
+        """Write multiple modbus holding registers.
+
+
+        Args:
+            reg_address (int): The address of the first register to write
+            reg_values (list[bytearray]): The values of the registers to write
+
+        Returns:
+            bool: True when the write operation was successful, False otherwise
+        """
 
         modbus_frame = self.__build_modbus_write_holding_register_request_frame(reg_address, reg_values)
-        req_frame = self.__build_request_frame(modbus_frame)
-        resp_frame = self.connector.send_request(req_frame)
-        modbus_resp_frame = self.__extract_modbus_response_frame(resp_frame)
+        modbus_crc = bytearray.fromhex("{:04x}".format(libscrc.modbus(modbus_frame)))
+        modbus_crc.reverse()
+
+        modbus_resp_frame = self.connector.send_request(modbus_frame + modbus_crc)
         if modbus_resp_frame is None:
             return False
         return self.__parse_modbus_write_holding_register_response(modbus_resp_frame, reg_address, reg_values)
-
-    def __build_request_frame(self, modbus_frame) -> bytearray:
-        start = bytearray.fromhex("A5")  # start
-        length = (15 + len(modbus_frame) + 2).to_bytes(2, "little")  # datalength
-        controlcode = bytearray.fromhex("1045")  # controlCode
-        inverter_sn_prefix = bytearray.fromhex("0000")  # serial
-        datafield = bytearray.fromhex("020000000000000000000000000000")
-        modbus_crc = bytearray.fromhex("{:04x}".format(libscrc.modbus(modbus_frame)))
-        modbus_crc.reverse()
-        checksum = bytearray.fromhex("00")  # checksum placeholder for outer frame
-        end_code = bytearray.fromhex("15")
-        inverter_sn = bytearray.fromhex("{:10x}".format(self.config.serial_number))
-        inverter_sn.reverse()
-        frame = (
-            start
-            + length
-            + controlcode
-            + inverter_sn_prefix
-            + inverter_sn
-            + datafield
-            + modbus_frame
-            + modbus_crc
-            + checksum
-            + end_code
-        )
-
-        checksum = 0
-        for i in range(1, len(frame) - 2, 1):
-            checksum += frame[i] & 255
-        frame[len(frame) - 2] = int((checksum & 255))
-
-        return frame
-
-    def __extract_modbus_response_frame(self, frame: bytes | None) -> bytes | None:
-        # 29 - outer frame, 2 - modbus addr and command, 2 - modbus crc
-        if not frame:
-            # Error was already logged in `send_request()` function
-            return None
-        if len(frame) == 29:
-            self.__parse_response_error_code(frame)
-            return None
-        if len(frame) < (29 + 4):
-            self.__log.error("Response frame is too short")
-            return None
-        if frame[0] != 0xA5:
-            self.__log.error("Response frame has invalid starting byte")
-            return None
-        if frame[-1] != 0x15:
-            self.__log.error("Response frame has invalid ending byte")
-            return None
-
-        return frame[25:-2]
 
     def __build_modbus_read_holding_registers_request_frame(self, first_reg: int, last_reg: int) -> bytearray:
         reg_count = last_reg - first_reg + 1
@@ -164,15 +137,17 @@ class DeyeModbus:
             a += 1
         return registers
 
-    def __build_modbus_write_holding_register_request_frame(self, reg_address: int, reg_values: list[int]) -> bytearray:
-        return bytearray.fromhex(
-            "0110{:04x}{:04x}{:02x}{}".format(
-                reg_address, len(reg_values), len(reg_values) * 2, "".join(["{:04x}".format(v) for v in reg_values])
-            )
-        )
+    def __build_modbus_write_holding_register_request_frame(
+        self, reg_address: int, reg_values: list[bytearray]
+    ) -> bytearray:
+        result = bytearray.fromhex("0110{:04x}{:04x}{:02x}".format(reg_address, len(reg_values), len(reg_values) * 2))
+        for v in reg_values:
+            self.__log.info(f"Extending with {v}")
+            result.extend(v)
+        return result
 
     def __parse_modbus_write_holding_register_response(
-        self, frame: bytes, reg_address: int, reg_values: list[int]
+        self, frame: bytes, reg_address: int, reg_values: list[bytearray]
     ) -> bool:
         expected_frame_data_len = 6
         expected_frame_len = 6 + 2  # 2 bytes for crc
@@ -201,13 +176,3 @@ class DeyeModbus:
             )
             return False
         return True
-
-    def __parse_response_error_code(self, frame: bytes) -> None:
-        error_frame = frame[25:-2]
-        error_code = error_frame[0]
-        if error_code == 0x05:
-            self.__log.error("Modbus device address does not match.")
-        elif error_code == 0x06:
-            self.__log.error("Logger Serial Number does not match. Check your configuration file.")
-        else:
-            self.__log.error("Unknown response error code. Error frame: %s", error_frame.hex())

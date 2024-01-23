@@ -20,6 +20,7 @@ from unittest.mock import patch
 
 from deye_config import DeyeConfig, DeyeLoggerConfig
 from deye_modbus import DeyeModbus
+from deye_modbus_tcp import DeyeModbusTcp
 
 
 class DeyeModbusTest(unittest.TestCase):
@@ -29,7 +30,7 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_read_register_0x01(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a5000000000000000000000000000000000000000000000000010301000ac84300000015"
         )
@@ -45,7 +46,7 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_read_registers_0x02_0x03(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a5000000000000000000000000000000000000000000000000010302000a000b13f600000015"
         )
@@ -68,13 +69,30 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_write_register_0x12_to_0xa3d4(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a5000000000000000000000000000000000000000000000000" + "011000120001a1cc" + "0015"
         )
 
         # when
-        success = sut.write_register(0x12, 0xA3D4)
+        success = sut.write_register(0x12, bytearray.fromhex("A3D4"))
+
+        # then
+        self.assertTrue(success)
+        connector.send_request.assert_called_once_with(
+            bytearray.fromhex("a51a0010450000d202964902000000000000000000000000000001100012000102a3d4dd8d2b15")
+        )
+
+    @patch("deye_connector.DeyeConnector")
+    def test_write_register_uint_0x12_to_0xa3d4(self, connector):
+        # given
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
+        connector.send_request.return_value = bytearray.fromhex(
+            "a5000000000000000000000000000000000000000000000000" + "011000120001a1cc" + "0015"
+        )
+
+        # when
+        success = sut.write_register_uint(0x12, 0xA3D4)
 
         # then
         self.assertTrue(success)
@@ -85,7 +103,7 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_read_register_SUN_10K_SG04LP3_EU_part1(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a53b0010150007482ee38d020121d0060091010000403e486301032800ffffff160a12162420ffffffffffffffffffffffffffffffffffff0001ffff0001ffff000003e81fa45115"
         )
@@ -103,7 +121,7 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_read_register_SUN_10K_SG04LP3_EU_part2(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a5330010150008482ee38d020122d0060091010000403e486301032000010000ffffffffffff0001ffffffffffffffffffff0000ffff0011ffffffff3a005715"
         )
@@ -121,7 +139,7 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_incorrect_inverter_serial_number(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a51000101500c9c22576f80201032d0000790800007106d6630600bd15"
         )
@@ -139,7 +157,7 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_incorrect_modbus_address(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a51000101500c9c22576f80201032d0000790800007106d6630500bd15"
         )
@@ -155,7 +173,7 @@ class DeyeModbusTest(unittest.TestCase):
     @patch("deye_connector.DeyeConnector")
     def test_unknown_error_code(self, connector):
         # given
-        sut = DeyeModbus(self.config, connector)
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
         connector.send_request.return_value = bytearray.fromhex(
             "a51000101500c9c22576f80201032d0000790800007106d6630100bd15"
         )
@@ -167,6 +185,25 @@ class DeyeModbusTest(unittest.TestCase):
         # then
         self.assertEqual(len(captured.records), 1)
         self.assertEqual(captured.records[0].getMessage(), "Unknown response error code. Error frame: 0100")
+
+    @patch("deye_connector.DeyeConnector")
+    def test_at_protocol_detected(self, connector):
+        # given
+        sut = DeyeModbus(DeyeModbusTcp(self.config, connector))
+        connector.send_request.return_value = bytearray.fromhex(
+            "41542b595a434d505645523d4d57335f3136555f353430365f322e33322d44310d0a0d0a"
+        )
+
+        # when
+        with self.assertLogs() as captured:
+            sut.read_registers(0x50, 0x5F)
+
+        # then
+        self.assertEqual(len(captured.records), 1)
+        self.assertEqual(
+            captured.records[0].getMessage(),
+            "AT response detected. Try switching to 'AT' protocol. Set 'DEYE_LOGGER_PROTOCOL=at' and remove DEYE_LOGGER_PORT from your config",
+        )
 
 
 if __name__ == "__main__":
