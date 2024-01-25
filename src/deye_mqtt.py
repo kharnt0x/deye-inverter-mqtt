@@ -103,6 +103,9 @@ class DeyeMqttClient:
         except OSError as e:
             raise DeyeMqttPublishError(f"MQTT connection error: {str(e)}")
 
+    def do_publish(self, mqtt_topic: str, value: str):
+        self.__do_publish(mqtt_topic, value)
+
     def publish_observation(self, observation: Observation):
         if observation.sensor.mqtt_topic_suffix:
             mqtt_topic = f"{self.__config.topic_prefix}/{observation.sensor.mqtt_topic_suffix}"
