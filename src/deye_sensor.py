@@ -25,12 +25,22 @@ class Sensor:
     This is an abstract class. Method 'read_value' must be provided by the extending subclass.
     """
 
-    def __init__(self, name: str, mqtt_topic_suffix="", unit="", print_format="{:s}", device_class='', groups=[]):
+    def __init__(
+        self,
+        name: str,
+        mqtt_topic_suffix="",
+        unit="",
+        print_format="{:s}",
+        device_class="",
+        state_class=None,
+        groups=[],
+    ):
         self.name = name
         self.mqtt_topic_suffix = mqtt_topic_suffix
         self.unit = unit
         self.print_format = print_format
         self.device_class = device_class
+        self.state_class = state_class
         assert len(groups) > 0, f"Sensor {name} must belong to at least one group"
         self.groups = groups
 
@@ -81,10 +91,11 @@ class SingleRegisterSensor(Sensor):
         mqtt_topic_suffix="",
         unit="",
         print_format="{:0.1f}",
-        device_class='',
+        device_class="",
+        state_class=None,
         groups=[],
     ):
-        super().__init__(name, mqtt_topic_suffix, unit, print_format, device_class, groups)
+        super().__init__(name, mqtt_topic_suffix, unit, print_format, device_class, state_class, groups)
         self.reg_address = reg_address
         self.factor = factor
         self.offset = offset
@@ -121,10 +132,11 @@ class DoubleRegisterSensor(Sensor):
         mqtt_topic_suffix="",
         unit="",
         print_format="{:0.1f}",
-        device_class='',
+        device_class="",
+        state_class=None,
         groups=[],
     ):
-        super().__init__(name, mqtt_topic_suffix, unit, print_format, device_class, groups)
+        super().__init__(name, mqtt_topic_suffix, unit, print_format, device_class, state_class, groups)
         self.reg_address = reg_address
         self.factor = factor
         self.offset = offset
@@ -198,10 +210,11 @@ class ComputedPowerSensor(Sensor):
         mqtt_topic_suffix="",
         unit="",
         print_format="{:0.1f}",
-        device_class='',
+        device_class="",
+        state_class=None,
         groups=[],
     ):
-        super().__init__(name, mqtt_topic_suffix, unit, print_format, device_class, groups)
+        super().__init__(name, mqtt_topic_suffix, unit, print_format, device_class, state_class, groups)
         self.voltage_sensor = voltage_sensor
         self.current_sensor = current_sensor
 
@@ -224,11 +237,17 @@ class ComputedSumSensor(Sensor):
     """
 
     def __init__(
-        self, name: str, sensors: list[Sensor], mqtt_topic_suffix="", unit="",
-        print_format="{:0.1f}", device_class='', groups=[]
+        self,
+        name: str,
+        sensors: list[Sensor],
+        mqtt_topic_suffix="",
+        unit="",
+        print_format="{:0.1f}",
+        device_class="",
+        state_class=None,
+        groups=[],
     ):
-        super().__init__(name, mqtt_topic_suffix, unit, print_format,
-                         device_class, groups)
+        super().__init__(name, mqtt_topic_suffix, unit, print_format, device_class, state_class, groups)
         self.sensors = sensors
 
     def read_value(self, registers: dict[int, bytearray]):
