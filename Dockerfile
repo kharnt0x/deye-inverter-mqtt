@@ -25,6 +25,8 @@ RUN pip install --no-cache-dir --target . -r requirements.txt
 FROM python:3.10.13-alpine3.18
 WORKDIR /opt/deye_inverter_mqtt
 ADD src/*.py ./
+ADD plugins ./plugins
+ADD plugins/*.py ./plugins
 COPY --from=builder /build/ ./
 
 ENTRYPOINT [ "python", "./deye_docker_entrypoint.py" ]
